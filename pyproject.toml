@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pharma-demand-forecasting"
+version = "0.1.0"
+description = "Raw-material demand forecasting for compounding pharmacies: walk-forward validation, Ray Tune and MLflow registry (demo, synthetic data)."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Matheus Pombo Pedroso" }]
+requires-python = ">=3.11"
+# Runtime dependencies; exact tested versions are pinned in requirements.txt.
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "xgboost>=2.0",
+    "mlflow>=3.0",
+    "ray[tune]>=2.40",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+# Installs the `pharma-forecast` command (see src/pharma_forecast/cli.py).
+pharma-forecast = "pharma_forecast.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: import order, B: bugbear, UP: pyupgrade.
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

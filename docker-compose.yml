@@ -1,0 +1,41 @@
+# `docker compose up` runs the full pipeline once, then serves the MLflow UI.
+services:
+  pipeline:
+    build: .
+    # Override the image ENTRYPOINT to chain the CLI steps in one container run.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        pharma-forecast generate-data &&
+        pharma-forecast tune --num-samples ${SAMPLES:-12} --max-concurrent ${CONCURRENCY:-4} &&
+        pharma-forecast register &&
+        pharma-forecast promote &&
+        pharma-forecast status &&
+        pharma-forecast predict --out outputs/forecast.csv
+    # Ray uses /dev/shm for its object store; Docker's 64 MB default is too small.
+    shm_size: "2gb"
+    env_file:
+      - path: .env
+        required: false   # optional overrides, see .env.example
+    volumes:
+      - state:/app/state  # data, mlflow.db, model artifacts, forecasts
+
+  mlflow:
+    # Reuse the pipeline image: it already has the exact pinned MLflow version.
+    build: .
+    entrypoint: ["mlflow"]
+    # Same SQLite store the pipeline writes to. Artifacts are recorded as
+    # file:///app/state/mlartifacts URIs, readable here via the shared volume.
+    command: ["ui", "--host", "0.0.0.0", "--port", "5000",
+              "--backend-store-uri", "sqlite:////app/state/mlflow.db"]
+    ports:
+      - "5000:5000"
+    volumes:
+      - state:/app/state
+    depends_on:
+      pipeline:
+        # Start the UI only after the pipeline finished, so the DB exists.
+        condition: service_completed_successfully
+
+volumes:
+  state:

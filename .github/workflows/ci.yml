@@ -1,0 +1,42 @@
+name: CI
+
+# Run on every push and on pull requests targeting main.
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"  # same minor version the benchmarks ran on
+          cache: pip              # caches wheels keyed on requirements files
+
+      - name: Install
+        run: pip install -r requirements.txt -e ".[dev]"
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      # Unit tests (leakage, walk-forward splits, metrics) plus the
+      # train -> register -> promote -> rollback -> predict flow and a
+      # 2-trial Ray Tune run, all on tiny synthetic data.
+      - name: Tests
+        run: pytest
+
+      # Small end-to-end run through the real CLI, exactly as a user would.
+      - name: Smoke pipeline
+        run: |
+          pharma-forecast generate-data --days 260 --ingredients 2
+          pharma-forecast tune --num-samples 2 --max-concurrent 2 --n-folds 3 --test-days 14
+          pharma-forecast register
+          pharma-forecast promote
+          pharma-forecast predict
