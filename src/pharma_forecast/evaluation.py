@@ -25,7 +25,7 @@ from pharma_forecast.metrics import all_metrics
 from pharma_forecast.model import MultiHorizonForecaster
 from pharma_forecast.validation import Fold
 
-FORECASTERS = ("xgboost", "naive", "seasonal_naive")
+FORECASTERS = ("xgboost", "naive", "seasonal_naive", "seasonal_mean_4w")
 
 
 def prepare_table(raw: pd.DataFrame, horizons: tuple[int, ...] = HORIZONS) -> pd.DataFrame:
@@ -69,6 +69,7 @@ def evaluate_fold(
             "xgboost": pred,
             "naive": test[f"naive_{horizon}"].to_numpy(),
             "seasonal_naive": test[f"snaive_{horizon}"].to_numpy(),
+            "seasonal_mean_4w": test[f"smean4_{horizon}"].to_numpy(),
         }
     )
     return all_metrics(preds["actual"], preds["xgboost"]), preds

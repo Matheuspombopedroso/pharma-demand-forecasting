@@ -53,8 +53,9 @@ def holdout_metrics_flat(report: pd.DataFrame) -> dict[str, float]:
 
     Produces e.g. ``holdout_xgboost_wape_h7`` and, for convenience,
     ``holdout_xgboost_wape_mean`` (the number used to compare registry
-    versions during promotion) and ``wape_gain_vs_snaive_h7`` (positive =
-    model better than seasonal naive, in WAPE points).
+    versions during promotion) and ``wape_gain_vs_snaive_h7`` /
+    ``wape_gain_vs_smean4_h7`` (positive = model better than that baseline,
+    in WAPE points).
     """
     out: dict[str, float] = {}
     for r in report.itertuples():
@@ -67,6 +68,9 @@ def holdout_metrics_flat(report: pd.DataFrame) -> dict[str, float]:
     for h in report["horizon"].unique():
         out[f"wape_gain_vs_snaive_h{h}"] = (
             out[f"holdout_seasonal_naive_wape_h{h}"] - out[f"holdout_xgboost_wape_h{h}"]
+        )
+        out[f"wape_gain_vs_smean4_h{h}"] = (
+            out[f"holdout_seasonal_mean_4w_wape_h{h}"] - out[f"holdout_xgboost_wape_h{h}"]
         )
     return out
 

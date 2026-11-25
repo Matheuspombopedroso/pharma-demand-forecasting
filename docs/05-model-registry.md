@@ -53,6 +53,11 @@ simple safety check, not a statistical test. A production system would score
 both versions on the same recent window (or run a shadow period, see
 `predict --alias challenger`).
 
+In the benchmark run ([benchmarks.md](benchmarks.md)) this gate did real
+work: the Ray-Tune-tuned model had a better CV WAPE (0.0904 vs 0.0960) but a
+worse hold-out WAPE (0.0960 vs 0.0910), so `promote` rejected it and the
+default-params version stayed champion.
+
 ### Rollback
 
 `rollback` points `@champion` back at `@previous` and tags the version it

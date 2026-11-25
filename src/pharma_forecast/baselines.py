@@ -23,7 +23,7 @@ from pharma_forecast.config import HORIZONS
 
 
 def add_baselines(df: pd.DataFrame, horizons: tuple[int, ...] = HORIZONS) -> pd.DataFrame:
-    """Add ``naive_{H}`` and ``snaive_{H}`` forecast columns (grams).
+    """Add ``naive_{H}``, ``snaive_{H}`` and ``smean4_{H}`` forecasts (grams).
 
     Args:
         df: Long DataFrame with ``date``, ``ingredient``, ``qty_g``.
@@ -39,9 +39,15 @@ def add_baselines(df: pd.DataFrame, horizons: tuple[int, ...] = HORIZONS) -> pd.
     last_week = [g.shift(6 - k) for k in range(7)]
     week_sum = sum(last_week)
 
+    # avg_week[k] = mean of qty(t-6+k-7j) for j = 0..3: same weekday, 4 weeks.
+    avg_week = [sum(g.shift(6 - k + 7 * j) for j in range(4)) / 4 for k in range(7)]
+    avg_week_sum = sum(avg_week)
+
     for h in horizons:
         out[f"naive_{h}"] = h * out["qty_g"]
         q, r = divmod(h, 7)
         partial = sum(last_week[:r]) if r else 0.0
         out[f"snaive_{h}"] = q * week_sum + partial
+        partial4 = sum(avg_week[:r]) if r else 0.0
+        out[f"smean4_{h}"] = q * avg_week_sum + partial4
     return out

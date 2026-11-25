@@ -50,7 +50,7 @@ def test_features_do_not_use_future_values(raw: pd.DataFrame) -> None:
 
 def test_baselines_do_not_use_future_values(raw: pd.DataFrame) -> None:
     cutoff = pd.Timestamp("2023-05-15")
-    cols = ["naive_7", "snaive_7", "naive_30", "snaive_30"]
+    cols = ["naive_7", "snaive_7", "smean4_7", "naive_30", "snaive_30", "smean4_30"]
     original = add_baselines(raw)
     scrambled = add_baselines(_scramble_after(raw, cutoff))
     past = original["date"] <= cutoff
@@ -85,3 +85,12 @@ def test_seasonal_naive_repeats_last_week(raw: pd.DataFrame) -> None:
     assert one.loc[i, "snaive_7"] == pytest.approx(last_week.sum())
     # 9 days = one full week + the first 2 days of the pattern (t-6, t-5).
     assert one.loc[i, "snaive_9"] == pytest.approx(last_week.sum() + last_week[:2].sum())
+
+
+def test_seasonal_mean_averages_four_weeks(raw: pd.DataFrame) -> None:
+    b = add_baselines(raw, (7,))
+    one = b[b["ingredient"] == "a"].reset_index(drop=True)
+    i = 60
+    four_weeks = one.loc[i - 27 : i, "qty_g"].to_numpy()
+    # 7-day forecast = sum of the 7 weekday averages = (sum of 28 days) / 4.
+    assert one.loc[i, "smean4_7"] == pytest.approx(four_weeks.sum() / 4)

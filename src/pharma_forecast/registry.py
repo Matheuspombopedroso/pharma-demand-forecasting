@@ -183,12 +183,17 @@ def rollback(
 def status(tracking_uri: str, name: str = REGISTERED_MODEL_NAME) -> list[dict[str, str]]:
     """List every version with its aliases, metric and tags (for the CLI)."""
     client = _client(tracking_uri)
+    # search_model_versions() does not fill in aliases, so read the
+    # alias -> version map from the registered model and invert it.
+    by_version: dict[str, list[str]] = {}
+    for alias, v in client.get_registered_model(name).aliases.items():
+        by_version.setdefault(str(v), []).append(alias)
     rows = []
     for mv in client.search_model_versions(f"name='{name}'"):
         rows.append(
             {
                 "version": str(mv.version),
-                "aliases": ",".join(mv.aliases) or "-",
+                "aliases": ",".join(sorted(by_version.get(str(mv.version), []))) or "-",
                 PROMOTION_METRIC: mv.tags.get(PROMOTION_METRIC, "-"),
                 "rolled_back": mv.tags.get("rolled_back", "false"),
                 "run_id": mv.run_id,

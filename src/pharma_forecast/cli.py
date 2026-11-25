@@ -46,6 +46,11 @@ def _print_df(df: pd.DataFrame) -> None:
         print(df.to_string(index=False))
 
 
+def _fmt(value: float | None) -> str:
+    """Format an optional metric with 4 decimals ("none" if missing)."""
+    return "none" if value is None else f"{value:.4f}"
+
+
 def _save_run_id(run_id: str) -> None:
     OUTPUTS.mkdir(exist_ok=True)
     LAST_RUN_FILE.write_text(run_id)
@@ -78,11 +83,20 @@ def cmd_tune(args: argparse.Namespace, s: Settings) -> None:
     from pharma_forecast.tune import run_tuning, save_best_params
 
     raw = load_consumption(s.data_path)
-    res = run_tuning(raw, s, args.num_samples, args.max_concurrent, args.n_folds, args.test_days)
+    res = run_tuning(
+        raw,
+        s,
+        args.num_samples,
+        args.max_concurrent,
+        args.n_folds,
+        args.test_days,
+        use_asha=not args.no_asha,
+    )
     OUTPUTS.mkdir(exist_ok=True)
     save_best_params(res, BEST_PARAMS_FILE)
+    folds_run = int(res.trials["folds_done"].sum())
     print(
-        f"Tuned {len(res.trials)} trials in {res.wall_seconds:.1f}s "
+        f"Tuned {len(res.trials)} trials ({folds_run} trial-folds) in {res.wall_seconds:.1f}s "
         f"(max_concurrent={args.max_concurrent}); best cv_wape={res.best_cv_wape:.4f}"
     )
     print(f"Best params -> {BEST_PARAMS_FILE}: {json.dumps(res.best_params)}")
@@ -125,7 +139,7 @@ def cmd_promote(args: argparse.Namespace, s: Settings) -> None:
     print(d.reason)
     print(
         f"candidate v{d.candidate_version} wape={d.candidate_metric:.4f}; "
-        f"previous champion v{d.previous_champion} wape={d.champion_metric}"
+        f"previous champion v{d.previous_champion} wape={_fmt(d.champion_metric)}"
     )
 
 
@@ -133,7 +147,11 @@ def cmd_rollback(args: argparse.Namespace, s: Settings) -> None:
     """Restore the previous champion."""
     from pharma_forecast.registry import rollback
 
-    old, new = rollback(s.mlflow_tracking_uri, args.version)
+    try:
+        old, new = rollback(s.mlflow_tracking_uri, args.version)
+    except ValueError as exc:
+        print(f"Rollback not possible: {exc}")
+        raise SystemExit(1) from exc
     print(f"Rolled back: champion v{old} -> v{new}")
 
 
@@ -176,7 +194,10 @@ def build_parser() -> argparse.ArgumentParser:
         else:
             sp.add_argument("--num-samples", type=int, default=20)
             sp.add_argument("--max-concurrent", type=int, default=4)
-            sp.add_argument("--no-train", action="store_true")
+            sp.add_argument("--no-train", action="store_true", help="search only")
+            sp.add_argument(
+                "--no-asha", action="store_true", help="FIFO: run every trial on every fold"
+            )
 
     r = sub.add_parser("register")
     r.add_argument("--run-id", default=None)

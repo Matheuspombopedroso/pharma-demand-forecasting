@@ -48,7 +48,12 @@ def _aliases(uri: str) -> dict[str, str]:
 def test_train_register_promote_rollback_predict(raw: pd.DataFrame, settings: Settings) -> None:
     uri = settings.mlflow_tracking_uri
     good = run_training(raw, settings, SMALL, n_folds=3, test_days=14)
-    assert set(good.holdout["forecaster"]) == {"xgboost", "naive", "seasonal_naive"}
+    assert set(good.holdout["forecaster"]) == {
+        "xgboost",
+        "naive",
+        "seasonal_naive",
+        "seasonal_mean_4w",
+    }
 
     # First version becomes champion directly (bootstrap).
     v1 = register(good.run_id, uri)

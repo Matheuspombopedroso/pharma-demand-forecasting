@@ -31,7 +31,8 @@ import mlflow
 import pandas as pd
 import ray
 from ray import tune
-from ray.tune.schedulers import ASHAScheduler
+from ray.tune.schedulers import ASHAScheduler, FIFOScheduler
+from ray.tune.search.basic_variant import BasicVariantGenerator
 
 from pharma_forecast.config import HORIZONS, Settings
 from pharma_forecast.evaluation import cross_validate, prepare_table
@@ -100,6 +101,7 @@ def run_tuning(
     max_concurrent: int = 4,
     n_folds: int = 5,
     test_days: int = 28,
+    use_asha: bool = True,
 ) -> TuneResult:
     """Run the Ray Tune search and log all trials to MLflow.
 
@@ -110,6 +112,8 @@ def run_tuning(
         max_concurrent: Trials allowed to run at the same time (= CPUs used).
         n_folds: Walk-forward folds including the hold-out (excluded here).
         test_days: Days per test window.
+        use_asha: Early-stop weak trials with ASHA. Disable (FIFO: every trial
+            runs every fold) to benchmark parallel speed-up on identical work.
 
     Returns:
         A :class:`TuneResult` with the best parameters.
@@ -123,6 +127,15 @@ def run_tuning(
     os.environ.setdefault("RAY_raylet_start_wait_time_s", "120")
     # Dashboard off: it is not needed locally and adds startup time and ports.
     ray.init(num_cpus=max_concurrent, include_dashboard=False, ignore_reinit_error=True)
+    # grace_period=1: every trial gets at least one fold before ASHA may stop
+    # it; max_t = number of folds a trial can report.
+    scheduler = (
+        ASHAScheduler(
+            time_attr="folds_done", max_t=len(tuning_folds), grace_period=1, reduction_factor=2
+        )
+        if use_asha
+        else FIFOScheduler()
+    )
     try:
         tuner = tune.Tuner(
             tune.with_resources(
@@ -137,14 +150,10 @@ def run_tuning(
                 mode="min",
                 num_samples=num_samples,
                 max_concurrent_trials=max_concurrent,
-                # grace_period=1: every trial gets at least one fold before
-                # ASHA may stop it; max_t = number of folds it can report.
-                scheduler=ASHAScheduler(
-                    time_attr="folds_done",
-                    max_t=len(tuning_folds),
-                    grace_period=1,
-                    reduction_factor=2,
-                ),
+                # Seeded random search: the same seed samples the same configs,
+                # so runs with different concurrency do comparable work.
+                search_alg=BasicVariantGenerator(random_state=settings.seed),
+                scheduler=scheduler,
                 trial_dirname_creator=_short_trial_name,
                 trial_name_creator=_short_trial_name,
             ),
@@ -168,7 +177,17 @@ def run_tuning(
     best_cv = float(best.metrics["cv_wape"])
 
     parent_id = _log_trials_to_mlflow(
-        settings, trials, best_params, best_cv, wall, num_samples, max_concurrent
+        settings,
+        trials,
+        best_params,
+        best_cv,
+        wall,
+        {
+            "num_samples": num_samples,
+            "max_concurrent": max_concurrent,
+            "scheduler": "ASHA" if use_asha else "FIFO",
+            "n_tuning_folds": len(tuning_folds),
+        },
     )
     return TuneResult(best_params, best_cv, trials, wall, parent_id)
 
@@ -179,22 +198,19 @@ def _log_trials_to_mlflow(
     best_params: dict[str, Any],
     best_cv: float,
     wall: float,
-    num_samples: int,
-    max_concurrent: int,
+    search_params: dict[str, Any],
 ) -> str:
     """Log one parent run plus a nested run per trial; return the parent id."""
     setup_mlflow(settings)
     with mlflow.start_run(run_name="tune") as parent:
         mlflow.set_tag("stage", "tune")
-        mlflow.log_params(
-            {"num_samples": num_samples, "max_concurrent": max_concurrent, "scheduler": "ASHA"}
-        )
+        mlflow.log_params(search_params)
         mlflow.log_metrics(
             {
                 "best_cv_wape": best_cv,
                 "tune_wall_seconds": wall,
                 "trials_stopped_early": int(
-                    (trials["folds_done"] < trials["folds_done"].max()).sum()
+                    (trials["folds_done"] < search_params["n_tuning_folds"]).sum()
                 ),
             }
         )

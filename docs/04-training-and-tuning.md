@@ -77,11 +77,12 @@ with those params (tagged `source=tune`), producing the run to register.
 
 ### Ray Train
 
-Ray Train's `XGBoostTrainer` (data-parallel training of a single model across
-workers) was **not** used. The dataset here is ~5k rows per horizon and a
-model fits in well under a second, so splitting one fit across workers would
-add coordination overhead without a benefit. The parallelism that pays off at
-this size is across trials, which is what Ray Tune provides.
+Ray Train's `XGBoostTrainer` (data-parallel training of *one* model split
+across workers) was **not** used. The whole table is ~5,800 rows and fits
+easily in one process, so sharding a single fit would only add coordination
+overhead. At this size the useful parallelism is across trials, which is what
+Ray Tune provides. Ray Train becomes relevant when one training set no longer
+fits on one machine (listed under Future work in the README).
 
 ## Run just this part
 
